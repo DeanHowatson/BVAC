@@ -8,3 +8,5 @@ Rear = 11.7%
 Turret = 16.7%
 
 Options are presented for the most commonly used armour types, turret or no turret calculations and to round to multiples of 5.
+
+ChatGPT was used to generate formatting, comments and some sections of code
