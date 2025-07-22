@@ -4,6 +4,7 @@ import csv
 import math
 import os
 import json
+import sys
 
 # File to store settings
 SETTINGS_FILE = "settings.json"
@@ -44,7 +45,7 @@ def load_settings():
             return json.load(f)
     return {"dark_mode": True}
 
-def calculate_armour_distribution(total_armour_points: int, round_each: bool = False, remove_turret: bool = False) -> dict:
+def calculate_armour_distribution(total_armour_points: int, round_each: bool = False, remove_turret: bool = False, reinforce_turret: bool = False) -> dict:
     """
     Distribute total armour points to vehicle facings.
     Handles optional turret removal and optional rounding.
@@ -66,6 +67,15 @@ def calculate_armour_distribution(total_armour_points: int, round_each: bool = F
         turret_share = distribution_percent.pop("Turret")
         for loc in distribution_percent:
             distribution_percent[loc] += turret_share / len(distribution_percent)
+
+    # Adjust turret to 25% and redistribute reduction from sides and rear
+    if reinforce_turret and not remove_turret:
+        delta = 0.25 - distribution_percent["Turret"]
+        distribution_percent["Turret"] = 0.25
+        reducible = ["Left Side", "Right Side", "Rear"]
+        reducible_total = sum(distribution_percent[k] for k in reducible)
+        for k in reducible:
+            distribution_percent[k] -= delta * (distribution_percent[k] / reducible_total)
 
     # Calculate unrounded point allocations
     raw_allocations = {loc: total_armour_points * pct for loc, pct in distribution_percent.items()}
@@ -119,7 +129,8 @@ def run_calculation():
         layout = calculate_armour_distribution(
             total_armour_points,
             round_each=round_each_location.get(),
-            remove_turret=remove_turret.get()
+            remove_turret=remove_turret.get(),
+            reinforce_turret=reinforce_turret.get()
         )
 
         # Clear and display results
@@ -225,6 +236,18 @@ def toggle_mode():
 
 # GUI Setup
 root = tk.Tk()
+
+# Use safe icon path handling for PyInstaller --onefile
+if hasattr(sys, '_MEIPASS'):
+    icon_path = os.path.join(sys._MEIPASS, 'BVAC_icon.ico')
+else:
+    icon_path = 'BVAC_icon.ico'
+
+try:
+    root.iconbitmap(icon_path)
+except Exception as e:
+    print(f"Warning: Failed to set window icon: {e}")
+
 root.title("BattleTech Vehicle Armour Calculator")
 root.geometry("480x650")
 
@@ -266,23 +289,34 @@ check_round = ttk.Checkbutton(frame, text="Round to nearest 5 and add leftover t
 check_round.grid(column=0, row=4, columnspan=2, sticky=tk.W)
 create_tooltip(check_round, "Rounds each facing to nearest 5 (front always rounds up)")
 
-# Remove turret option
-remove_turret = tk.BooleanVar(value=False)
-check_turret = ttk.Checkbutton(frame, text="Remove Turret and distribute its share", variable=remove_turret)
-check_turret.grid(column=0, row=5, columnspan=2, sticky=tk.W)
-create_tooltip(check_turret, "Eliminates turret and spreads its armor to other facings")
+# Mutually exclusive options for turret
+reinforce_turret = tk.BooleanVar(value=False)
+remove_turret = tk.BooleanVar()
+def on_remove_turret_toggle():
+    if remove_turret.get():
+        reinforce_turret.set(False)
+
+def on_reinforce_turret_toggle():
+    if reinforce_turret.get():
+        remove_turret.set(False)
+
+check_remove_turret = ttk.Checkbutton(frame, text="Remove Turret", variable=remove_turret, command=on_remove_turret_toggle)
+check_remove_turret.grid(column=0, row=5, columnspan=2, sticky=tk.W)
+create_tooltip(check_remove_turret, "Redistributes turret armor equally across remaining sections")
+check_reinforce = ttk.Checkbutton(frame, text="Reinforce Turret (up to 25%)", variable=reinforce_turret, command=on_reinforce_turret_toggle)
+check_reinforce.grid(column=0, row=6, columnspan=2, sticky=tk.W)
+create_tooltip(check_reinforce, "Increases turret share to 25% by reducing side/rear armor")
 
 # Calculate button
 btn = ttk.Button(frame, text="Calculate", command=run_calculation)
-btn.grid(column=0, row=6, columnspan=2, pady=10)
+btn.grid(column=0, row=7, columnspan=2, pady=10)
 
 # Results output
-
 canvas = tk.Canvas(frame, width=200, height=160)
-canvas.grid(column=0, row=7, columnspan=2, pady=10)
+canvas.grid(column=0, row=8, columnspan=2, pady=10)
 
 result_text = tk.Text(frame, height=10)
-result_text.grid(column=0, row=8, columnspan=2, pady=5, sticky="nsew")
+result_text.grid(column=0, row=9, columnspan=2, pady=5, sticky="nsew")
 
 # Apply initial mode
 if dark_mode.get():
